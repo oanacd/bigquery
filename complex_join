@@ -1,0 +1,34 @@
+MERGE `your_project.your_dataset.dim_customer` AS target
+USING (
+  -- 1. Get all incoming source records
+  SELECT 
+    id AS join_key, 
+    id, name, email, 
+    CURRENT_TIMESTAMP() as start_date 
+  FROM `your_project.your_dataset.source_staging`
+  
+  UNION ALL
+  
+  -- 2. "Pseudo-records" to trigger a new insert for existing rows that changed
+  SELECT 
+    NULL AS join_key, 
+    src.id, src.name, src.email, 
+    CURRENT_TIMESTAMP() as start_date
+  FROM `your_project.your_dataset.source_staging` AS src
+  JOIN `your_project.your_dataset.dim_customer` AS tgt
+    ON src.id = tgt.id
+  WHERE tgt.is_current = TRUE 
+    AND (src.name != tgt.name OR src.email != tgt.email)
+) AS source
+ON target.id = source.join_key AND target.is_current = TRUE
+
+-- ACTION A: If the record changed, expire the old one
+WHEN MATCHED AND (target.name != source.name OR target.email != source.email) THEN
+  UPDATE SET 
+    target.is_current = FALSE, 
+    target.end_date = source.start_date
+
+-- ACTION B: If no current record exists (new or changed), insert the new version
+WHEN NOT MATCHED THEN
+  INSERT (id, name, email, is_current, start_date, end_date)
+  VALUES (source.id, source.name, source.email, TRUE, source.start_date, '9999-12-31 23:59:59');
