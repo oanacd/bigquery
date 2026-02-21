@@ -1,0 +1,23 @@
+WITH training_with_hire AS (
+  SELECT
+    t.*,
+    h.Role,
+    h.Date AS hire_date,
+    ROW_NUMBER() OVER (
+      PARTITION BY t.Name, t.Date
+      ORDER BY h.Date DESC
+    ) AS rn
+  FROM `project.dataset.df_training` t
+  JOIN `project.dataset.df_hire_date` h
+    ON t.Name = h.Name
+   AND h.Date <= t.Date
+)
+SELECT
+  Name,
+  hire_date,
+  Role,
+  Date AS training_date,
+  Training
+FROM training_with_hire
+WHERE rn = 1
+ORDER BY Name, training_date;
